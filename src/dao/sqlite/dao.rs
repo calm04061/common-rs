@@ -1,5 +1,5 @@
 use r2d2_sqlite::rusqlite::{Row, Rows, Transaction};
-use crate::sqlite::connection::DbResult;
+use crate::dao::sqlite::connection::DbResult;
 
 pub trait SimpleDao<T: for<'a> From<&'a Row<'a>>, I: r2d2_sqlite::rusqlite::ToSql> {
     fn table_name() -> String;

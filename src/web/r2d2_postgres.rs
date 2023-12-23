@@ -1,8 +1,8 @@
 use actix_web::web;
 use actix_web::web::Data;
 use r2d2_postgres::postgres::Transaction;
-use crate::model::result::WebResult;
-use crate::postgres::connection::{DbPool, DbResult};
+use crate::dao::r2d2_postgres::connection::DbPool;
+use crate::model::result::{DbResult, WebResult};
 
 pub fn invoke<F, R>(pool: &DbPool, f: F) -> WebResult<R>
     where

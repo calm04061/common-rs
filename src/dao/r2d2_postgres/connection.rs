@@ -34,7 +34,7 @@ pub type DbResult<T> = Result<T, Error>;
 //     }
 //
 //     fn init_connection() -> DbPool {
-//         let database_url = dotenv::var("DATABASE_URL").unwrap_or(String::from("postgres://postgres:postgres@127.0.0.1:5432/manager"));
+//         let database_url = dotenv::var("DATABASE_URL").unwrap_or(String::from("r2d2_postgres://r2d2_postgres:r2d2_postgres@127.0.0.1:5432/manager"));
 //
 //         let postgres_manager = PostgresConnectionManager::new(database_url.parse().unwrap(),
 //                                                               NoTls,
@@ -69,7 +69,7 @@ pub type DbResult<T> = Result<T, Error>;
 //
 //
 //
-// // #[cfg(feature = "postgres")]
+// // #[cfg(feature = "r2d2_postgres")]
 // // pub fn get_connection() -> Arc<Mutex<DbPool>> {
 // //     let mut guard = CONNECTION_HOLDER.lock().unwrap();
 // //     guard.get()

@@ -1,15 +1,13 @@
 pub mod model;
 #[cfg(feature = "quartz")]
 mod scheduler;
+
 #[cfg(feature = "quartz")]
 pub use scheduler::get_scheduler;
-#[cfg(feature = "postgres")]
-pub mod postgres;
 
-#[cfg(feature = "sqlite")]
-pub mod sqlite;
 mod database;
-
+pub mod dao;
+pub mod web;
 
 #[cfg(test)]
 mod tests {

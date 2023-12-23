@@ -1,14 +1,10 @@
-#[cfg(feature = "postgres")]
+#[cfg(feature = "r2d2_pg")]
 pub mod connection;
-#[cfg(feature = "postgres")]
+#[cfg(feature = "r2d2_pg")]
 pub mod dao;
-#[cfg(feature = "postgres")]
-pub mod controller;
 
 use log::error;
-use crate::model::result::WebResult;
-use crate::postgres::connection::DbResult;
-
+use crate::model::result::{DbResult, WebResult};
 
 pub fn to_web_result<T>(result: DbResult<T>) -> WebResult<T> {
     return match result {
