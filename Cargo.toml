@@ -32,3 +32,11 @@ quartz = ["quartz_sched"]
 sqlite = ["r2d2_sqlite"]
 
 
+
+[gitflow]
+production_branch = "main"
+development_branch = "develop"
+feature_branch_prefix = "feature/"
+hotfix_branch_prefix = "hotfix/"
+version_tag_prefix = "v"
+origin = "origin"
