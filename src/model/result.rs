@@ -97,14 +97,7 @@ impl<T: Clone> From<DbResult<Option<T>>> for WebResult<T>
 
 impl<T: Clone> From<DbResult<T>> for WebResult<T> {
     fn from(value: DbResult<T>) -> Self {
-        match value {
-            Ok(r) => {
-                WebResult::success(r.clone())
-            }
-            Err(e) => {
-                WebResult::fail(e.code, e.message.as_str())
-            }
-        }
+        Self::from(&value)
     }
 }
 

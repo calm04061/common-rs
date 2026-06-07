@@ -1,4 +1,6 @@
 use crate::model::result::{DbResult, PageRequest, PageResult};
+#[cfg(all(feature = "sqlx_oracle", feature = "sqlx_pg"))]
+mod sqlx_dao;
 
 #[cfg(feature = "r2d2_pg")]
 pub mod r2d2_postgres;
@@ -6,6 +8,8 @@ pub mod r2d2_postgres;
 pub mod sqlx_postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
+#[cfg(feature = "sqlx_oracle")]
+pub mod sqlx_oracle;
 
 pub trait SimpleDao<E, T> {
     fn table_name() -> String;

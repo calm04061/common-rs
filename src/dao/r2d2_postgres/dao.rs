@@ -7,8 +7,8 @@ pub trait SimpleDao<T: From<Row>, I: Sync + tokio_postgres::types::ToSql> {
 
     fn page(page_request: &PageRequest<T>, conn: &mut Transaction) -> DbResult<PageResult<T>> {
         let count: i64 = conn.query_one(format!("SELECT count(1) FROM {} ", Self::table_name()).as_str(), &[])?.get(0);
-        let page_size_ = page_request.page_size as i64;
-        let offset = ((page_request.current_page - 1) * page_request.page_size) as i64;
+        let page_size_ = page_request.page_size;
+        let offset = (page_request.current_page - 1) * page_request.page_size;
         let result = conn.query(format!("SELECT * FROM {} order by id limit $1 offset $2", Self::table_name()).as_str(), &[&page_size_, &offset]);
         let result = Self::convert(result);
 
@@ -16,7 +16,7 @@ pub trait SimpleDao<T: From<Row>, I: Sync + tokio_postgres::types::ToSql> {
             current_page: page_request.current_page,
             page_size: page_request.page_size,
             total_count: count,
-            list: Some(result.unwrap()),
+            list: Some(result?),
         })
     }
 
@@ -31,7 +31,7 @@ pub trait SimpleDao<T: From<Row>, I: Sync + tokio_postgres::types::ToSql> {
     }
 
     fn delete(id: I, conn: &mut Transaction) -> DbResult<u64> {
-        Ok(conn.execute(format!("delete from {} where id = $1", Self::table_name()).as_str(), &[&id]).unwrap())
+        Ok(conn.execute(format!("delete from {} where id = $1", Self::table_name()).as_str(), &[&id])?)
     }
     fn convert(result: DbResult<Vec<Row>>) -> DbResult<Vec<T>> {
         convert(result)
@@ -46,7 +46,7 @@ pub fn get_first<T: From<Row>>(result: DbResult<Vec<Row>>) -> DbResult<Option<T>
     if let Err(e) = result {
         return Err(e);
     }
-    let vec = result.unwrap()
+    let vec = result?
         .into_iter().map(|r| {
         T::from(r)
     }).collect::<Vec<T>>();
@@ -62,7 +62,7 @@ pub fn convert<T: From<Row>>(result: DbResult<Vec<Row>>) -> DbResult<Vec<T>> {
     if let Err(e) = result {
         return Err(e);
     }
-    let vec = result.unwrap()
+    let vec = result?
         .into_iter().map(|r| {
         T::from(r)
     }).collect::<Vec<T>>();

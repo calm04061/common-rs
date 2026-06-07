@@ -1,68 +1,67 @@
 use crate::model::result::{DbResult, PageRequest, PageResult};
 use async_trait::async_trait;
+use sqlx::{Executor, Pool, Postgres, Row, Transaction, query};
 use sqlx::postgres::PgRow;
-use sqlx::{query, Executor, Pool, Postgres, Row, Transaction};
-use sqlx::AssertSqlSafe;
+use sqlx_oracle::Oracle;
 
-pub type DbPool = Pool<Postgres>;
+pub type DbPool = Pool<Oracle>;
+pub type DbTransaction<T> = Transaction<T, Oracle>;
+pub type DbRow = dyn sqlx_oracle::row::Row<Oracle>;
+pub type DbQuery<A,B> = sqlx::query::QueryAs<A, Oracle,B>;
+
 
 #[async_trait]
 pub trait SimpleDao<E>
-where
-    E: From<PgRow> + Sync,
+where E: From<DbRow> + Sync
 {
     fn table_name() -> String;
 
-    async fn page(
-        page_request: &PageRequest<E>,
-        conn: &mut Transaction<'_, Postgres>,
-    ) -> DbResult<PageResult<E>> {
+    async fn page(page_request: &PageRequest<E>, conn: &mut DbTransaction<'_>) -> DbResult<PageResult<E>> {
         let sql = format!("SELECT count(1) FROM {} ", Self::table_name());
-        let row = conn
-            .fetch_one(sqlx::query(AssertSqlSafe(sql)))
-            .await
-            .unwrap();
+        let sql = sql.as_str();
+        let query = sqlx::query(sql);
+        let row = conn.fetch_one::<DbQuery<'_,_>>(query).await.unwrap();
         let count: i64 = row.get(0);
+        // let count: i64 = conn.query_one(format!("SELECT count(1) FROM {} ", Self::table_name()).as_str(), &[])?.get(0);
         let page_size_ = page_request.page_size;
         let offset = (page_request.current_page - 1) * page_request.page_size;
-        let sql = format!(
-            "SELECT * FROM {} order by id limit $1 offset $2",
-            Self::table_name()
-        );
-        let result = conn
-            .fetch_all(sqlx::query(AssertSqlSafe(sql)).bind(page_size_).bind(offset))
-            .await
-            .unwrap();
+        let sql = format!("SELECT * FROM {} order by id limit $1 offset $2", Self::table_name());
+        let sql = sql.as_str();
+        let query = sqlx::query(sql)
+            .bind(page_size_)
+            .bind(offset);
+        let result = conn.fetch_all(query).await.unwrap();
         let result = Self::convert(Ok(result));
 
         Ok(PageResult {
             current_page: page_request.current_page,
             page_size: page_request.page_size,
             total_count: count,
-            list: Some(result?),
+            list: Some(result.unwrap()),
         })
     }
 
     async fn list(tran: &mut Transaction<'_, Postgres>) -> DbResult<Vec<E>> {
         let sql = format!("select * from {} ", Self::table_name());
-        let query: query::Query<'_, Postgres, _> =
-            sqlx::query(AssertSqlSafe(sql));
-        let vec = tran
-            .fetch_all::<query::Query<'_, Postgres, _>>(query)
-            .await
-            .unwrap();
+        let sql = sql.as_str();
+        let query: query::Query<'_, Postgres, _> = query(sql);
+        let vec = tran.fetch_all::<query::Query<'_, Postgres, _>>(query).await.unwrap();
         Self::convert(Ok(vec))
     }
 
     async fn detail<'q>(id: i32, tran: &mut Transaction<'_, Postgres>) -> DbResult<Option<E>> {
         let sql = format!("select * from {} where id =$1", Self::table_name());
-        let query = sqlx::query(AssertSqlSafe(sql)).bind(id);
+        let sql = sql.as_str();
+        let query = query(sql)
+            .bind(id);
         let result = tran.fetch_all(query).await.unwrap();
         Self::get_first(Ok(result))
     }
     async fn delete(id: i32, conn: &mut Transaction<'_, Postgres>) -> DbResult<u64> {
         let sql = format!("delete from {} where id = $1", Self::table_name());
-        let query = sqlx::query(AssertSqlSafe(sql)).bind(id);
+        let sql = sql.as_str();
+        let query = query(sql)
+            .bind(id);
         Ok(conn.execute(query).await.unwrap().rows_affected())
     }
     fn convert(result: DbResult<Vec<PgRow>>) -> DbResult<Vec<E>> {
@@ -73,14 +72,15 @@ where
     }
 }
 
-pub fn get_first<T: From<PgRow>>(result: DbResult<Vec<PgRow>>) -> DbResult<Option<T>> {
+pub fn get_first<T: From<PgRow>>(result: DbResult<Vec<PgRow>>) -> DbResult<Option<T>>
+{
     if let Err(e) = result {
         return Err(e);
     }
     let vec = result?
-        .into_iter()
-        .map(|r| T::from(r))
-        .collect::<Vec<T>>();
+        .into_iter().map(|r| {
+        T::from(r)
+    }).collect::<Vec<T>>();
     if vec.is_empty() {
         Ok(None)
     } else {
@@ -89,13 +89,13 @@ pub fn get_first<T: From<PgRow>>(result: DbResult<Vec<PgRow>>) -> DbResult<Optio
     }
 }
 
-pub fn convert<T: From<PgRow>>(result: DbResult<Vec<PgRow>>) -> DbResult<Vec<T>> {
+pub fn convert<T: From<PgRow>>(result: DbResult<Vec<DbRow>>) -> DbResult<Vec<T>> {
     if let Err(e) = result {
         return Err(e);
     }
-    let vec = result?
-        .into_iter()
-        .map(|r| T::from(r))
-        .collect::<Vec<T>>();
+    let vec = result.unwrap()
+        .into_iter().map(|r| {
+        T::from(r)
+    }).collect::<Vec<T>>();
     Ok(vec)
 }
