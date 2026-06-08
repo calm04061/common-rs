@@ -1,7 +1,8 @@
-use crate::model::result::{DbResult, PageRequest, PageResult};
+// ---------------------------------------------------------------------------
+// Old per-backend modules — kept for backward compatibility.
+// ---------------------------------------------------------------------------
 #[cfg(all(feature = "sqlx_oracle", feature = "sqlx_pg"))]
 mod sqlx_dao;
-
 #[cfg(feature = "r2d2_pg")]
 pub mod r2d2_postgres;
 #[cfg(feature = "sqlx_pg")]
@@ -11,14 +12,23 @@ pub mod sqlite;
 #[cfg(feature = "sqlx_oracle")]
 pub mod sqlx_oracle;
 
-pub trait SimpleDao<E, T> {
-    fn table_name() -> String;
+// ---------------------------------------------------------------------------
+// New unified modules (方案三).
+//
+// `sync`  — shared by r2d2_pg + sqlite  (sync/blocking backends)
+// `async` — shared by sqlx_pg + sqlx_oracle  (async backends)
+// ---------------------------------------------------------------------------
 
-    fn page(page_request: &PageRequest<E>, conn: &mut T) -> DbResult<PageResult<E>>;
+/// Unified sync DAO — available when at least one sync backend is enabled.
+#[cfg(any(feature = "r2d2_pg", feature = "sqlite"))]
+pub mod sync;
 
-    fn list(tran: &mut T) -> DbResult<Vec<E>>;
+/// Unified async DAO — available when at least one sqlx backend is enabled.
+#[cfg(any(feature = "sqlx_pg", feature = "sqlx_oracle"))]
+pub mod r#async;
 
-    fn detail(id: i32, tran: T) -> DbResult<Option<E>>;
-
-    fn delete(id: i32, conn: &mut T) -> DbResult<u64>;
-}
+// Re-exports for ergonomic usage
+#[cfg(any(feature = "r2d2_pg", feature = "sqlite"))]
+pub use sync::SimpleDao;
+#[cfg(any(feature = "sqlx_pg", feature = "sqlx_oracle"))]
+pub use r#async::AsyncSimpleDao;
