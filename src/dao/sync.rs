@@ -74,11 +74,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::result::{DbResult, PageRequest};
+    use crate::model::result::{DbResult, ErrorCode, PageRequest};
 
     // --- Mock connection that records SQL and returns canned data ---
 
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     struct MockRow(i32, String);
 
     struct MockConn {
@@ -233,5 +233,115 @@ mod tests {
         let any = id as &dyn std::any::Any;
         assert!(any.downcast_ref::<String>().is_some());
         assert!(any.downcast_ref::<i32>().is_none());
+    }
+
+    #[test]
+    fn to_sql_sync_downcast_bool() {
+        let id: &dyn ToSqlSync = &true;
+        let any = id as &dyn std::any::Any;
+        assert!(any.downcast_ref::<bool>().is_some());
+    }
+
+    #[test]
+    fn to_sql_sync_downcast_i64() {
+        let id: &dyn ToSqlSync = &100i64;
+        let any = id as &dyn std::any::Any;
+        assert!(any.downcast_ref::<i64>().is_some());
+        assert!(any.downcast_ref::<i32>().is_none());
+    }
+
+    #[test]
+    fn sync_execute_sql_directly() {
+        let rows = vec![MockRow(1, "a".into())];
+        let mut conn = MockConn::new(rows);
+
+        let result = conn.execute("UPDATE test_table SET x = 1").unwrap();
+
+        assert_eq!(result, 1);
+        assert!(conn.last_sql.contains("test_table"));
+    }
+
+    #[test]
+    fn sync_page_first_page_offset_is_zero() {
+        let rows = vec![MockRow(1, "a".into())];
+        let mut conn = MockConn::new(rows);
+        let req = PageRequest::<MockRow> {
+            current_page: 1,
+            page_size: 10,
+            query: None,
+        };
+
+        let _ = TestDao::page(&req, &mut conn).unwrap();
+
+        // offset = (1-1) * 10 = 0
+        assert!(conn.last_sql.contains("OFFSET 0"));
+    }
+
+    #[test]
+    fn sync_detail_with_string_id() {
+        let rows = vec![MockRow(1, "found".into())];
+        let mut conn = MockConn::new(rows);
+
+        let result = TestDao::detail(&"test-id".to_string(), &mut conn).unwrap();
+
+        assert!(result.is_some());
+        assert!(conn.last_sql.contains("WHERE id"));
+    }
+
+    #[test]
+    fn sync_detail_returns_none_for_empty_result() {
+        let mut conn = MockConn::new(vec![]);
+
+        let result = TestDao::detail(&"missing".to_string(), &mut conn).unwrap();
+
+        assert!(result.is_none());
+    }
+
+    struct ErrorConn;
+
+    impl SyncConnection<MockRow> for ErrorConn {
+        fn query_all(&mut self, _sql: &str) -> DbResult<Vec<MockRow>> {
+            Err(ErrorCode::new(500, "db error"))
+        }
+        fn query_bind(&mut self, _sql: &str, _id: &dyn ToSqlSync) -> DbResult<Vec<MockRow>> {
+            Err(ErrorCode::new(500, "db error"))
+        }
+        fn execute(&mut self, _sql: &str) -> DbResult<u64> {
+            Err(ErrorCode::new(500, "db error"))
+        }
+        fn execute_bind(&mut self, _sql: &str, _id: &dyn ToSqlSync) -> DbResult<u64> {
+            Err(ErrorCode::new(500, "db error"))
+        }
+        fn count(&mut self, _sql: &str) -> DbResult<i64> {
+            Err(ErrorCode::new(500, "db error"))
+        }
+    }
+
+    struct ErrorDao;
+
+    impl SimpleDao<MockRow, ErrorConn> for ErrorDao {
+        fn table_name() -> String { "error_table".to_string() }
+    }
+
+    #[test]
+    fn sync_list_propagates_error() {
+        let mut conn = ErrorConn;
+        let result = ErrorDao::list(&mut conn);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code, 500);
+    }
+
+    #[test]
+    fn sync_detail_propagates_error() {
+        let mut conn = ErrorConn;
+        let result = ErrorDao::detail(&1, &mut conn);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn sync_delete_propagates_error() {
+        let mut conn = ErrorConn;
+        let result = ErrorDao::delete(&1, &mut conn);
+        assert!(result.is_err());
     }
 }

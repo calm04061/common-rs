@@ -226,4 +226,80 @@ mod tests {
         // We verify the id is passed through query_bind.
         let _ = result;
     }
+
+    #[tokio::test]
+    async fn async_execute_sql_directly() {
+        let mut conn = MockAsyncConn::new(vec![MockRow(1, "x".into())]);
+
+        let result = conn.execute("DELETE FROM t").await.unwrap();
+
+        assert_eq!(result, 1);
+    }
+
+    #[tokio::test]
+    async fn async_page_first_page_offset_is_zero() {
+        let rows = vec![MockRow(1, "a".into())];
+        let mut conn = MockAsyncConn::new(rows);
+        let req = PageRequest::<MockRow> {
+            current_page: 1,
+            page_size: 10,
+            query: None,
+        };
+
+        let _ = AsyncTestDao::page(&req, &mut conn).await.unwrap();
+
+        let sql = conn.last_sql.lock().unwrap().clone();
+        // offset = (1-1) * 10 = 0
+        assert!(sql.contains("OFFSET 0"));
+    }
+
+    struct ErrorAsyncConn;
+
+    #[async_trait]
+    impl AsyncConnection<MockRow> for ErrorAsyncConn {
+        async fn query_all(&mut self, _sql: &str) -> DbResult<Vec<MockRow>> {
+            Err(crate::model::result::ErrorCode::new(500, "db err"))
+        }
+        async fn query_bind(&mut self, _sql: &str, _id: i32) -> DbResult<Vec<MockRow>> {
+            Err(crate::model::result::ErrorCode::new(500, "db err"))
+        }
+        async fn execute(&mut self, _sql: &str) -> DbResult<u64> {
+            Err(crate::model::result::ErrorCode::new(500, "db err"))
+        }
+        async fn execute_bind(&mut self, _sql: &str, _id: i32) -> DbResult<u64> {
+            Err(crate::model::result::ErrorCode::new(500, "db err"))
+        }
+        async fn count(&mut self, _sql: &str) -> DbResult<i64> {
+            Err(crate::model::result::ErrorCode::new(500, "db err"))
+        }
+    }
+
+    struct AsyncErrorDao;
+
+    #[async_trait]
+    impl AsyncSimpleDao<MockRow, ErrorAsyncConn> for AsyncErrorDao {
+        fn table_name() -> String { "error_table".to_string() }
+    }
+
+    #[tokio::test]
+    async fn async_list_propagates_error() {
+        let mut conn = ErrorAsyncConn;
+        let result = AsyncErrorDao::list(&mut conn).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().code, 500);
+    }
+
+    #[tokio::test]
+    async fn async_detail_propagates_error() {
+        let mut conn = ErrorAsyncConn;
+        let result = AsyncErrorDao::detail(1, &mut conn).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn async_delete_propagates_error() {
+        let mut conn = ErrorAsyncConn;
+        let result = AsyncErrorDao::delete(1, &mut conn).await;
+        assert!(result.is_err());
+    }
 }
