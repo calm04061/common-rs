@@ -2,15 +2,20 @@ use r2d2_sqlite::rusqlite::{Row, Transaction};
 use crate::dao::sync::{SyncConnection, ToSqlSync};
 use crate::model::result::{DbResult, ErrorCode};
 
-type SqliteToSql = dyn r2d2_sqlite::rusqlite::types::ToSql;
-
 /// Wrapper around sqlite Transaction.
-pub struct SqliteTran<'a>(pub &'a mut Transaction<'a>);
+pub(crate) struct SqliteTran<'a>(pub(crate) &'a mut Transaction<'a>);
 
 impl<'a, T> SyncConnection<T> for SqliteTran<'a>
 where
     T: for<'row> From<&'row Row<'row>>,
 {
+    fn placeholder() -> &'static str
+    where
+        Self: Sized,
+    {
+        "?"
+    }
+
     fn query_all(&mut self, sql: &str) -> DbResult<Vec<T>> {
         let mut stmt = self.0.prepare(sql).map_err(to_ec)?;
         let mut rows = stmt.query([]).map_err(to_ec)?;

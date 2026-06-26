@@ -2,6 +2,7 @@ use r2d2_postgres::postgres::{Row, Transaction};
 use crate::dao::r2d2_postgres::connection::DbResult;
 use crate::model::result::{PageRequest, PageResult};
 
+#[deprecated(note = "Use crate::dao::sync::SimpleDao instead — unified across backends")]
 pub trait SimpleDao<T: From<Row>, I: Sync + tokio_postgres::types::ToSql> {
     fn table_name() -> String;
 

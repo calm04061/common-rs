@@ -25,6 +25,13 @@ pub trait SyncConnection<T> {
     fn execute(&mut self, sql: &str) -> DbResult<u64>;
     fn execute_bind(&mut self, sql: &str, id: &dyn ToSqlSync) -> DbResult<u64>;
     fn count(&mut self, sql: &str) -> DbResult<i64>;
+
+    fn placeholder() -> &'static str
+    where
+        Self: Sized,
+    {
+        "$1"
+    }
 }
 
 /// Generic sync DAO — one impl works for both r2d2_pg and sqlite.
@@ -57,13 +64,15 @@ where
     }
 
     fn detail(id: &dyn ToSqlSync, conn: &mut C) -> DbResult<Option<T>> {
-        let sql = format!("SELECT * FROM {} WHERE id = $1", Self::table_name());
+        let p = C::placeholder();
+        let sql = format!("SELECT * FROM {} WHERE id = {p}", Self::table_name());
         let mut rows = conn.query_bind(&sql, id)?;
         Ok(if rows.is_empty() { None } else { Some(rows.remove(0)) })
     }
 
     fn delete(id: &dyn ToSqlSync, conn: &mut C) -> DbResult<u64> {
-        let sql = format!("DELETE FROM {} WHERE id = $1", Self::table_name());
+        let p = C::placeholder();
+        let sql = format!("DELETE FROM {} WHERE id = {p}", Self::table_name());
         conn.execute_bind(&sql, id)
     }
 }

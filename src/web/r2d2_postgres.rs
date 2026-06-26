@@ -55,7 +55,9 @@ where
         let mut connection = pool.get().map_err(|e| ErrorCode::new(1, &e.to_string()))?;
         let mut transaction = connection.transaction().map_err(|e| ErrorCode::new(1, &e.to_string()))?;
         let result = {
-            let mut wrapper = PgTran::new(&mut transaction);
+            // SAFETY: `transaction` is declared above and lives in this scope,
+            // outliving `wrapper` — the raw pointer remains valid.
+            let mut wrapper = unsafe { PgTran::new(&mut transaction) };
             f(&mut wrapper)
         }?;
         transaction.commit().map_err(|e| ErrorCode::new(1, &e.to_string()))?;

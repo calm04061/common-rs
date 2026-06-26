@@ -40,7 +40,6 @@ impl CommonConnectionHolder<DbPool> for ConnectionHolder{
         return pool;
     }
 }
-#[cfg(feature = "sqlite")]
 pub fn get_connection() -> Arc<Mutex<DbPool>> {
     let mut guard = CONNECTION_HOLDER.lock().unwrap();
     guard.get()

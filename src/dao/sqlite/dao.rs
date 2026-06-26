@@ -1,6 +1,7 @@
 use r2d2_sqlite::rusqlite::{Row, Rows, Transaction};
 use crate::dao::sqlite::connection::DbResult;
 
+#[deprecated(note = "Use crate::dao::sync::SimpleDao instead — unified across backends")]
 pub trait SimpleDao<T: for<'a> From<&'a Row<'a>>, I: r2d2_sqlite::rusqlite::ToSql> {
     fn table_name() -> String;
     fn list(tran: &mut Transaction) -> DbResult<Vec<T>> {

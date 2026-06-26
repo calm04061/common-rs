@@ -7,6 +7,16 @@ pub mod sqlx_oracle_backend;
 use crate::model::result::{DbResult, PageRequest, PageResult};
 use async_trait::async_trait;
 
+/// Marker trait for types that can be passed as async query parameters.
+///
+/// Each backend downcasts from `&dyn ToSqlAsync` to a concrete sqlx-compatible type.
+pub trait ToSqlAsync: std::any::Any + Send + Sync {}
+
+impl ToSqlAsync for i32 {}
+impl ToSqlAsync for i64 {}
+impl ToSqlAsync for String {}
+impl ToSqlAsync for bool {}
+
 /// Async connection — returns domain entities `T` directly.
 #[async_trait]
 pub trait AsyncConnection<T>: Send
@@ -14,9 +24,9 @@ where
     T: Send + Sync,
 {
     async fn query_all(&mut self, sql: &str) -> DbResult<Vec<T>>;
-    async fn query_bind(&mut self, sql: &str, id: i32) -> DbResult<Vec<T>>;
+    async fn query_bind(&mut self, sql: &str, id: &dyn ToSqlAsync) -> DbResult<Vec<T>>;
     async fn execute(&mut self, sql: &str) -> DbResult<u64>;
-    async fn execute_bind(&mut self, sql: &str, id: i32) -> DbResult<u64>;
+    async fn execute_bind(&mut self, sql: &str, id: &dyn ToSqlAsync) -> DbResult<u64>;
     async fn count(&mut self, sql: &str) -> DbResult<i64>;
 }
 
@@ -51,13 +61,13 @@ where
         conn.query_all(&sql).await
     }
 
-    async fn detail(id: i32, conn: &mut C) -> DbResult<Option<T>> {
+    async fn detail(id: &dyn ToSqlAsync, conn: &mut C) -> DbResult<Option<T>> {
         let sql = format!("SELECT * FROM {} WHERE id = $1", Self::table_name());
         let mut rows = conn.query_bind(&sql, id).await?;
         Ok(if rows.is_empty() { None } else { Some(rows.remove(0)) })
     }
 
-    async fn delete(id: i32, conn: &mut C) -> DbResult<u64> {
+    async fn delete(id: &dyn ToSqlAsync, conn: &mut C) -> DbResult<u64> {
         let sql = format!("DELETE FROM {} WHERE id = $1", Self::table_name());
         conn.execute_bind(&sql, id).await
     }
@@ -97,7 +107,7 @@ mod tests {
             Ok(self.rows.lock().unwrap().clone())
         }
 
-        async fn query_bind(&mut self, sql: &str, _id: i32) -> DbResult<Vec<MockRow>> {
+        async fn query_bind(&mut self, sql: &str, _id: &dyn ToSqlAsync) -> DbResult<Vec<MockRow>> {
             *self.last_sql.lock().unwrap() = sql.to_string();
             Ok(self.rows.lock().unwrap().clone())
         }
@@ -107,7 +117,7 @@ mod tests {
             Ok(self.rows.lock().unwrap().len() as u64)
         }
 
-        async fn execute_bind(&mut self, sql: &str, _id: i32) -> DbResult<u64> {
+        async fn execute_bind(&mut self, sql: &str, _id: &dyn ToSqlAsync) -> DbResult<u64> {
             *self.last_sql.lock().unwrap() = sql.to_string();
             Ok(self.rows.lock().unwrap().len() as u64)
         }
@@ -152,7 +162,7 @@ mod tests {
     async fn async_detail_found() {
         let mut conn = MockAsyncConn::new(vec![MockRow(7, "seven".into())]);
 
-        let result = AsyncTestDao::detail(7, &mut conn).await.unwrap();
+        let result = AsyncTestDao::detail(&7, &mut conn).await.unwrap();
 
         assert!(result.is_some());
         assert_eq!(result.unwrap().0, 7);
@@ -164,7 +174,7 @@ mod tests {
     async fn async_detail_not_found() {
         let mut conn = MockAsyncConn::new(vec![]);
 
-        let result = AsyncTestDao::detail(99, &mut conn).await.unwrap();
+        let result = AsyncTestDao::detail(&99, &mut conn).await.unwrap();
 
         assert!(result.is_none());
     }
@@ -173,7 +183,7 @@ mod tests {
     async fn async_delete_returns_count() {
         let mut conn = MockAsyncConn::new(vec![MockRow(1, "x".into())]);
 
-        let result = AsyncTestDao::delete(1, &mut conn).await.unwrap();
+        let result = AsyncTestDao::delete(&1, &mut conn).await.unwrap();
 
         assert_eq!(result, 1);
         let sql = conn.last_sql.lock().unwrap().clone();
@@ -220,7 +230,7 @@ mod tests {
     async fn async_detail_non_existent_id_becomes_none() {
         let mut conn = MockAsyncConn::new(vec![MockRow(1, "exists".into())]);
 
-        let result = AsyncTestDao::detail(999, &mut conn).await.unwrap();
+        let result = AsyncTestDao::detail(&999, &mut conn).await.unwrap();
 
         // detail fetches with bind(id=999), but mock returns all rows.
         // We verify the id is passed through query_bind.
@@ -260,13 +270,13 @@ mod tests {
         async fn query_all(&mut self, _sql: &str) -> DbResult<Vec<MockRow>> {
             Err(crate::model::result::ErrorCode::new(500, "db err"))
         }
-        async fn query_bind(&mut self, _sql: &str, _id: i32) -> DbResult<Vec<MockRow>> {
+        async fn query_bind(&mut self, _sql: &str, _id: &dyn ToSqlAsync) -> DbResult<Vec<MockRow>> {
             Err(crate::model::result::ErrorCode::new(500, "db err"))
         }
         async fn execute(&mut self, _sql: &str) -> DbResult<u64> {
             Err(crate::model::result::ErrorCode::new(500, "db err"))
         }
-        async fn execute_bind(&mut self, _sql: &str, _id: i32) -> DbResult<u64> {
+        async fn execute_bind(&mut self, _sql: &str, _id: &dyn ToSqlAsync) -> DbResult<u64> {
             Err(crate::model::result::ErrorCode::new(500, "db err"))
         }
         async fn count(&mut self, _sql: &str) -> DbResult<i64> {
@@ -292,14 +302,14 @@ mod tests {
     #[tokio::test]
     async fn async_detail_propagates_error() {
         let mut conn = ErrorAsyncConn;
-        let result = AsyncErrorDao::detail(1, &mut conn).await;
+        let result = AsyncErrorDao::detail(&1, &mut conn).await;
         assert!(result.is_err());
     }
 
     #[tokio::test]
     async fn async_delete_propagates_error() {
         let mut conn = ErrorAsyncConn;
-        let result = AsyncErrorDao::delete(1, &mut conn).await;
+        let result = AsyncErrorDao::delete(&1, &mut conn).await;
         assert!(result.is_err());
     }
 }

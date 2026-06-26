@@ -11,6 +11,7 @@ fn to_ec(e: sqlx::Error) -> ErrorCode {
 }
 
 #[async_trait]
+#[deprecated(note = "Use crate::dao::r#async::AsyncSimpleDao instead — unified across backends")]
 pub trait SimpleDao<E>
 where
     E: for<'r> From<&'r <Oracle as sqlx::Database>::Row> + Sync,
