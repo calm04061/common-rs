@@ -1,4 +1,3 @@
-use std::any::Any;
 use async_trait::async_trait;
 use sqlx::{query, Executor, Row, Transaction};
 use sqlx::AssertSqlSafe;
@@ -30,19 +29,8 @@ where
     }
 
     async fn query_bind(&mut self, sql: &str, id: &dyn ToSqlAsync) -> DbResult<Vec<T>> {
-        let any = id as &dyn Any;
         let q = query(AssertSqlSafe(sql.to_owned()));
-        let q = if let Some(v) = any.downcast_ref::<i32>() {
-            q.bind(*v)
-        } else if let Some(v) = any.downcast_ref::<i64>() {
-            q.bind(*v)
-        } else if let Some(v) = any.downcast_ref::<String>() {
-            q.bind(v.as_str())
-        } else if let Some(v) = any.downcast_ref::<bool>() {
-            q.bind(*v)
-        } else {
-            return Err(ErrorCode::new(1, "unsupported bind type for sqlx_oracle"));
-        };
+        let q = crate::bind_async_param!(id, q, "sqlx_oracle");
         let rows = self.0.fetch_all(q).await.map_err(to_ec)?;
         Ok(rows.iter().map(|r| T::from(r)).collect())
     }
@@ -57,19 +45,8 @@ where
     }
 
     async fn execute_bind(&mut self, sql: &str, id: &dyn ToSqlAsync) -> DbResult<u64> {
-        let any = id as &dyn Any;
         let q = query(AssertSqlSafe(sql.to_owned()));
-        let q = if let Some(v) = any.downcast_ref::<i32>() {
-            q.bind(*v)
-        } else if let Some(v) = any.downcast_ref::<i64>() {
-            q.bind(*v)
-        } else if let Some(v) = any.downcast_ref::<String>() {
-            q.bind(v.as_str())
-        } else if let Some(v) = any.downcast_ref::<bool>() {
-            q.bind(*v)
-        } else {
-            return Err(ErrorCode::new(1, "unsupported bind type for sqlx_oracle"));
-        };
+        let q = crate::bind_async_param!(id, q, "sqlx_oracle");
         Ok(self.0.execute(q).await.map_err(to_ec)?.rows_affected())
     }
 

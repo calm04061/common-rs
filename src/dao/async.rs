@@ -28,6 +28,17 @@ where
     async fn execute(&mut self, sql: &str) -> DbResult<u64>;
     async fn execute_bind(&mut self, sql: &str, id: &dyn ToSqlAsync) -> DbResult<u64>;
     async fn count(&mut self, sql: &str) -> DbResult<i64>;
+
+    /// Placeholder syntax for parameterised queries.
+    ///
+    /// - sqlx-based backends (pg, oracle): `$1`
+    /// - Override this for backends that use a different syntax.
+    fn placeholder() -> &'static str
+    where
+        Self: Sized,
+    {
+        "$1"
+    }
 }
 
 /// Generic async DAO — one impl for both sqlx_pg and sqlx_oracle.
@@ -62,15 +73,54 @@ where
     }
 
     async fn detail(id: &dyn ToSqlAsync, conn: &mut C) -> DbResult<Option<T>> {
-        let sql = format!("SELECT * FROM {} WHERE id = $1", Self::table_name());
+        let p = C::placeholder();
+        let sql = format!("SELECT * FROM {} WHERE id = {p}", Self::table_name());
         let mut rows = conn.query_bind(&sql, id).await?;
         Ok(if rows.is_empty() { None } else { Some(rows.remove(0)) })
     }
 
     async fn delete(id: &dyn ToSqlAsync, conn: &mut C) -> DbResult<u64> {
-        let sql = format!("DELETE FROM {} WHERE id = $1", Self::table_name());
+        let p = C::placeholder();
+        let sql = format!("DELETE FROM {} WHERE id = {p}", Self::table_name());
         conn.execute_bind(&sql, id).await
     }
+}
+
+// ---------------------------------------------------------------------------
+// Shared bind-parameter macro for sqlx backends
+// ---------------------------------------------------------------------------
+
+/// Downcast `&dyn ToSqlAsync` and call `.bind()` on a `sqlx::Query`.
+///
+/// Both `PgAsyncTran` and `OracleAsyncTran` use identical downcast chains,
+/// this macro eliminates the repetition.
+///
+/// # Usage
+///
+/// ```ignore
+/// let q = query(AssertSqlSafe(sql.to_owned()));
+/// let q = bind_async_param!(id, q, "my_backend");
+/// let rows = self.0.fetch_all(q).await.map_err(to_ec)?;
+/// ```
+#[macro_export]
+macro_rules! bind_async_param {
+    ($id:expr, $query:expr, $backend:literal) => {{
+        let any = $id as &dyn std::any::Any;
+        if let Some(v) = any.downcast_ref::<i32>() {
+            $query.bind(*v)
+        } else if let Some(v) = any.downcast_ref::<i64>() {
+            $query.bind(*v)
+        } else if let Some(v) = any.downcast_ref::<String>() {
+            $query.bind(v.as_str())
+        } else if let Some(v) = any.downcast_ref::<bool>() {
+            $query.bind(*v)
+        } else {
+            return Err(crate::model::result::ErrorCode::new(
+                1,
+                concat!("unsupported bind type for ", $backend),
+            ));
+        }
+    }};
 }
 
 // ---------------------------------------------------------------------------

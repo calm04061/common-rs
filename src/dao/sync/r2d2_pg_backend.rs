@@ -3,25 +3,91 @@ use tokio_postgres::types::ToSql;
 use crate::dao::sync::{SyncConnection, ToSqlSync};
 use crate::model::result::{DbResult, ErrorCode};
 
-/// Internal backend wrapper. Not intended for direct use by downstream crates.
+/// Sync-backend wrapper around a [`tokio_postgres::Transaction`].
 ///
-/// Uses a raw pointer internally to sidestep lifetime complexity
-/// with nested mutable borrows in the web helper layer.
+/// This is **not** intended for direct use by downstream crates — use the
+/// [`SyncConnection`] trait impl or the `web::r2d2_postgres::invoke_unified`
+/// helper instead.
+///
+/// # Why a raw pointer?
+///
+/// The web integration layer (`web::r2d2_postgres::invoke_unified`) passes a
+/// `PgTran` into a closure that must be `Send + 'static` because it is
+/// dispatched via [`actix_web::web::block`].  A `&'a mut Transaction<'a>`
+/// cannot satisfy `'static`, so we erase the lifetime with a raw pointer.
+///
+/// # Safety invariant (maintained by the only constructor site)
+///
+/// The [`Transaction`] passed to [`PgTran::new`] **must** outlive the
+/// returned `PgTran`.  In the sole construction path
+/// (`invoke_unified`) this is guaranteed because:
+///
+/// 1. The `Transaction` is declared **before** the `PgTran` in the same
+///    stack frame (the `Transaction` lives on the stack, the `PgTran`
+///    borrows from it).
+/// 2. The `PgTran` is consumed before the `Transaction` goes out of scope
+///    (the `Transaction` is only accessed after the closure returns, for
+///    commit/rollback).
+///
+/// # Send + Safety
+///
+/// `PgTran` is `Send + Sync` (auto-derived via the `*mut` field).
+/// The wrapped `Transaction` is safe to move to another thread because it
+/// operates on a connection pool that is already thread-safe (r2d2).
+/// Since `PgTran` provides only `&mut self` methods (no shared ownership),
+/// there is no aliasing risk.
 pub struct PgTran {
+    /// Erased lifetime pointer to the backing `Transaction`.
+    ///
+    /// # Safety
+    ///
+    /// The referent must outlive `self`.  This is upheld by the
+    /// [`PgTran::new`] contract (see struct-level docs).
     tran: *mut Transaction<'static>,
 }
 
 impl PgTran {
+    /// Wrap a `Transaction` in a `PgTran`.
+    ///
     /// # Safety
     ///
-    /// `tran` must outlive the returned `PgTran`.
+    /// The caller **must** guarantee that `tran` outlives the returned
+    /// `PgTran`.  Violating this creates a dangling pointer that will
+    /// cause undefined behaviour on any method call.
+    ///
+    /// In practice this is ensured by declaring `tran` **before** the
+    /// `PgTran` in the same scope and not moving `tran` while the
+    /// `PgTran` is alive:
+    ///
+    /// ```ignore
+    /// let mut transaction = connection.transaction()?; // lives first
+    /// let mut wrapper = unsafe { PgTran::new(&mut transaction) }; // borrows
+    /// f(&mut wrapper); // used
+    /// // wrapper dropped; transaction can commit/rollback
+    /// transaction.commit()?;
+    /// ```
     pub unsafe fn new(tran: &mut Transaction<'_>) -> Self {
+        // SAFETY: The caller promises `tran` outlives the returned `PgTran`,
+        // so extending the reference to `'static` is sound — the pointer
+        // will never be dereferenced after `tran` is dropped.
         PgTran {
             tran: unsafe { &mut *(tran as *mut Transaction<'_> as *mut Transaction<'static>) },
         }
     }
 
+    /// Reborrow the inner `Transaction` as `&mut`.
+    ///
+    /// # Safety
+    ///
+    /// This is safe because:
+    /// - `self.tran` was constructed from a valid reference in [`new`](Self::new).
+    /// - The struct-level invariant guarantees the referent is still alive.
+    /// - We only hand out `&mut` references (no shared aliasing).
     fn as_tran(&mut self) -> &mut Transaction<'static> {
+        // SAFETY: `self.tran` was initialised from a valid `&mut Transaction`
+        // in `new()` and the struct-level invariant guarantees liveness.
+        // The pointer is only accessed through `&mut self`, so there is no
+        // aliasing beyond this single reference.
         unsafe { &mut *self.tran }
     }
 }

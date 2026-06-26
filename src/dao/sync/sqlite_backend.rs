@@ -1,6 +1,10 @@
-use r2d2_sqlite::rusqlite::{Row, Transaction};
+use r2d2_sqlite::rusqlite::{Row, ToSql, Transaction};
 use crate::dao::sync::{SyncConnection, ToSqlSync};
 use crate::model::result::{DbResult, ErrorCode};
+
+/// Trait alias for rusqlite's `ToSql`, used as a trait object in
+/// [`with_slice`].
+type SqliteToSql = dyn ToSql;
 
 /// Wrapper around sqlite Transaction.
 pub(crate) struct SqliteTran<'a>(pub(crate) &'a mut Transaction<'a>);
