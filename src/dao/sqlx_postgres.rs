@@ -1,10 +1,14 @@
-use crate::model::result::{DbResult, PageRequest, PageResult};
+use crate::model::result::{DbResult, ErrorCode, PageRequest, PageResult};
 use async_trait::async_trait;
 use sqlx::postgres::PgRow;
 use sqlx::{query, Executor, Pool, Postgres, Row, Transaction};
 use sqlx::AssertSqlSafe;
 
 pub type DbPool = Pool<Postgres>;
+
+fn to_ec(e: sqlx::Error) -> ErrorCode {
+    ErrorCode::new(1, &e.to_string())
+}
 
 #[async_trait]
 pub trait SimpleDao<E>
@@ -21,7 +25,7 @@ where
         let row = conn
             .fetch_one(sqlx::query(AssertSqlSafe(sql)))
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         let count: i64 = row.get(0);
         let page_size_ = page_request.page_size;
         let offset = (page_request.current_page - 1) * page_request.page_size;
@@ -32,7 +36,7 @@ where
         let result = conn
             .fetch_all(sqlx::query(AssertSqlSafe(sql)).bind(page_size_).bind(offset))
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         let result = Self::convert(Ok(result));
 
         Ok(PageResult {
@@ -50,20 +54,20 @@ where
         let vec = tran
             .fetch_all::<query::Query<'_, Postgres, _>>(query)
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         Self::convert(Ok(vec))
     }
 
     async fn detail<'q>(id: i32, tran: &mut Transaction<'_, Postgres>) -> DbResult<Option<E>> {
         let sql = format!("select * from {} where id =$1", Self::table_name());
         let query = sqlx::query(AssertSqlSafe(sql)).bind(id);
-        let result = tran.fetch_all(query).await.unwrap();
+        let result = tran.fetch_all(query).await.map_err(to_ec)?;
         Self::get_first(Ok(result))
     }
     async fn delete(id: i32, conn: &mut Transaction<'_, Postgres>) -> DbResult<u64> {
         let sql = format!("delete from {} where id = $1", Self::table_name());
         let query = sqlx::query(AssertSqlSafe(sql)).bind(id);
-        Ok(conn.execute(query).await.unwrap().rows_affected())
+        Ok(conn.execute(query).await.map_err(to_ec)?.rows_affected())
     }
     fn convert(result: DbResult<Vec<PgRow>>) -> DbResult<Vec<E>> {
         convert(result)

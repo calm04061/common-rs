@@ -3,12 +3,16 @@ use sqlx::{query, Executor, Row, Transaction};
 use sqlx::AssertSqlSafe;
 use sqlx_oracle::Oracle;
 use crate::dao::r#async::AsyncConnection;
-use crate::model::result::DbResult;
+use crate::model::result::{DbResult, ErrorCode};
 
 type OracleRow = <Oracle as sqlx::Database>::Row;
 
 /// Wrapper around sqlx Oracle Transaction.
 pub struct OracleAsyncTran<'a>(pub &'a mut Transaction<'a, Oracle>);
+
+fn to_ec(e: sqlx::Error) -> ErrorCode {
+    ErrorCode::new(1, &e.to_string())
+}
 
 #[async_trait]
 impl<T> AsyncConnection<T> for OracleAsyncTran<'_>
@@ -20,7 +24,7 @@ where
             .0
             .fetch_all(query(AssertSqlSafe(sql.to_owned())))
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         Ok(rows.iter().map(|r| T::from(r)).collect())
     }
 
@@ -29,7 +33,7 @@ where
             .0
             .fetch_all(query(AssertSqlSafe(sql.to_owned())).bind(id))
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         Ok(rows.iter().map(|r| T::from(r)).collect())
     }
 
@@ -38,7 +42,7 @@ where
             .0
             .execute(query(AssertSqlSafe(sql.to_owned())))
             .await
-            .unwrap()
+            .map_err(to_ec)?
             .rows_affected())
     }
 
@@ -47,7 +51,7 @@ where
             .0
             .execute(query(AssertSqlSafe(sql.to_owned())).bind(id))
             .await
-            .unwrap()
+            .map_err(to_ec)?
             .rows_affected())
     }
 
@@ -56,7 +60,7 @@ where
             .0
             .fetch_all(query(AssertSqlSafe(sql.to_owned())))
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         let count: i64 = rows[0].get(0);
         Ok(count)
     }

@@ -1,8 +1,6 @@
 // ---------------------------------------------------------------------------
 // Old per-backend modules — kept for backward compatibility.
 // ---------------------------------------------------------------------------
-#[cfg(all(feature = "sqlx_oracle", feature = "sqlx_pg"))]
-mod sqlx_dao;
 #[cfg(feature = "r2d2_pg")]
 pub mod r2d2_postgres;
 #[cfg(feature = "sqlx_pg")]
@@ -26,7 +24,6 @@ pub mod sync;
 /// Unified async DAO — available when at least one sqlx backend is enabled.
 #[cfg(any(feature = "sqlx_pg", feature = "sqlx_oracle"))]
 pub mod r#async;
-
 // Re-exports for ergonomic usage
 #[cfg(any(feature = "r2d2_pg", feature = "sqlite"))]
 pub use sync::SimpleDao;

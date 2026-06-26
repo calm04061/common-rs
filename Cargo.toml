@@ -28,6 +28,6 @@ sqlx-oracle = { git = "https://github.com/calm04061/sqlx-oracle.git", branch = "
 default = ["r2d2_pg"]
 r2d2_pg = ["r2d2_postgres", "tokio-postgres"]
 sqlx_pg = ["sqlx", "async-trait"]
-sqlx_oracle = ["sqlx-oracle", "async-trait"]
+sqlx_oracle = ["sqlx", "sqlx-oracle", "async-trait"]
 quartz = ["quartz_sched"]
 sqlite = ["r2d2_sqlite"]

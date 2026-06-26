@@ -52,8 +52,6 @@ impl ErrorCode {
     }
 }
 
-unsafe impl Send for ErrorCode {}
-
 impl Display for ErrorCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let string = format!("{}:{}", self.code, self.message);

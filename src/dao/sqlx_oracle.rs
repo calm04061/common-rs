@@ -1,101 +1,78 @@
-use crate::model::result::{DbResult, PageRequest, PageResult};
+use crate::model::result::{DbResult, ErrorCode, PageRequest, PageResult};
 use async_trait::async_trait;
-use sqlx::{Executor, Pool, Postgres, Row, Transaction, query};
-use sqlx::postgres::PgRow;
+use sqlx::{Executor, Pool, Row, Transaction};
+use sqlx::AssertSqlSafe;
 use sqlx_oracle::Oracle;
 
 pub type DbPool = Pool<Oracle>;
-pub type DbTransaction<T> = Transaction<T, Oracle>;
-pub type DbRow = dyn sqlx_oracle::row::Row<Oracle>;
-pub type DbQuery<A,B> = sqlx::query::QueryAs<A, Oracle,B>;
 
+fn to_ec(e: sqlx::Error) -> ErrorCode {
+    ErrorCode::new(1, &e.to_string())
+}
 
 #[async_trait]
 pub trait SimpleDao<E>
-where E: From<DbRow> + Sync
+where
+    E: for<'r> From<&'r <Oracle as sqlx::Database>::Row> + Sync,
 {
     fn table_name() -> String;
 
-    async fn page(page_request: &PageRequest<E>, conn: &mut DbTransaction<'_>) -> DbResult<PageResult<E>> {
+    async fn page(
+        page_request: &PageRequest<E>,
+        conn: &mut Transaction<'_, Oracle>,
+    ) -> DbResult<PageResult<E>> {
         let sql = format!("SELECT count(1) FROM {} ", Self::table_name());
-        let sql = sql.as_str();
-        let query = sqlx::query(sql);
-        let row = conn.fetch_one::<DbQuery<'_,_>>(query).await.unwrap();
+        let row = conn
+            .fetch_one(sqlx::query(AssertSqlSafe(sql)))
+            .await
+            .map_err(to_ec)?;
         let count: i64 = row.get(0);
-        // let count: i64 = conn.query_one(format!("SELECT count(1) FROM {} ", Self::table_name()).as_str(), &[])?.get(0);
         let page_size_ = page_request.page_size;
         let offset = (page_request.current_page - 1) * page_request.page_size;
-        let sql = format!("SELECT * FROM {} order by id limit $1 offset $2", Self::table_name());
-        let sql = sql.as_str();
-        let query = sqlx::query(sql)
-            .bind(page_size_)
-            .bind(offset);
-        let result = conn.fetch_all(query).await.unwrap();
-        let result = Self::convert(Ok(result));
+        let sql = format!(
+            "SELECT * FROM {} order by id offset {} rows fetch next {} rows only",
+            Self::table_name(),
+            offset,
+            page_size_
+        );
+        let rows = conn
+            .fetch_all(sqlx::query(AssertSqlSafe(sql)))
+            .await
+            .map_err(to_ec)?;
+        let list = rows.iter().map(|r| E::from(r)).collect::<Vec<E>>();
 
         Ok(PageResult {
             current_page: page_request.current_page,
             page_size: page_request.page_size,
             total_count: count,
-            list: Some(result.unwrap()),
+            list: Some(list),
         })
     }
 
-    async fn list(tran: &mut Transaction<'_, Postgres>) -> DbResult<Vec<E>> {
+    async fn list(tran: &mut Transaction<'_, Oracle>) -> DbResult<Vec<E>> {
         let sql = format!("select * from {} ", Self::table_name());
-        let sql = sql.as_str();
-        let query: query::Query<'_, Postgres, _> = query(sql);
-        let vec = tran.fetch_all::<query::Query<'_, Postgres, _>>(query).await.unwrap();
-        Self::convert(Ok(vec))
+        let rows = tran
+            .fetch_all(sqlx::query(AssertSqlSafe(sql)))
+            .await
+            .map_err(to_ec)?;
+        Ok(rows.iter().map(|r| E::from(r)).collect())
     }
 
-    async fn detail<'q>(id: i32, tran: &mut Transaction<'_, Postgres>) -> DbResult<Option<E>> {
+    async fn detail(id: i32, tran: &mut Transaction<'_, Oracle>) -> DbResult<Option<E>> {
         let sql = format!("select * from {} where id =$1", Self::table_name());
-        let sql = sql.as_str();
-        let query = query(sql)
-            .bind(id);
-        let result = tran.fetch_all(query).await.unwrap();
-        Self::get_first(Ok(result))
+        let rows = tran
+            .fetch_all(sqlx::query(AssertSqlSafe(sql)).bind(id))
+            .await
+            .map_err(to_ec)?;
+        Ok(rows.first().map(|r| E::from(r)))
     }
-    async fn delete(id: i32, conn: &mut Transaction<'_, Postgres>) -> DbResult<u64> {
+
+    async fn delete(id: i32, conn: &mut Transaction<'_, Oracle>) -> DbResult<u64> {
         let sql = format!("delete from {} where id = $1", Self::table_name());
-        let sql = sql.as_str();
-        let query = query(sql)
-            .bind(id);
-        Ok(conn.execute(query).await.unwrap().rows_affected())
+        Ok(conn
+            .execute(sqlx::query(AssertSqlSafe(sql)).bind(id))
+            .await
+            .map_err(to_ec)?
+            .rows_affected())
     }
-    fn convert(result: DbResult<Vec<PgRow>>) -> DbResult<Vec<E>> {
-        convert(result)
-    }
-    fn get_first(result: DbResult<Vec<PgRow>>) -> DbResult<Option<E>> {
-        get_first(result)
-    }
-}
-
-pub fn get_first<T: From<PgRow>>(result: DbResult<Vec<PgRow>>) -> DbResult<Option<T>>
-{
-    if let Err(e) = result {
-        return Err(e);
-    }
-    let vec = result?
-        .into_iter().map(|r| {
-        T::from(r)
-    }).collect::<Vec<T>>();
-    if vec.is_empty() {
-        Ok(None)
-    } else {
-        let data = vec.into_iter().next();
-        Ok(data)
-    }
-}
-
-pub fn convert<T: From<PgRow>>(result: DbResult<Vec<DbRow>>) -> DbResult<Vec<T>> {
-    if let Err(e) = result {
-        return Err(e);
-    }
-    let vec = result.unwrap()
-        .into_iter().map(|r| {
-        T::from(r)
-    }).collect::<Vec<T>>();
-    Ok(vec)
 }

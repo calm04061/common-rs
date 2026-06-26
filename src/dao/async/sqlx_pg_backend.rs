@@ -3,10 +3,14 @@ use sqlx::postgres::{PgRow, Postgres};
 use sqlx::{query, Executor, Row, Transaction};
 use sqlx::AssertSqlSafe;
 use crate::dao::r#async::AsyncConnection;
-use crate::model::result::DbResult;
+use crate::model::result::{DbResult, ErrorCode};
 
 /// Wrapper around sqlx Postgres Transaction.
 pub struct PgAsyncTran<'a>(pub &'a mut Transaction<'a, Postgres>);
+
+fn to_ec(e: sqlx::Error) -> ErrorCode {
+    ErrorCode::new(1, &e.to_string())
+}
 
 #[async_trait]
 impl<T> AsyncConnection<T> for PgAsyncTran<'_>
@@ -18,7 +22,7 @@ where
             .0
             .fetch_all(query(AssertSqlSafe(sql.to_owned())))
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         Ok(rows.into_iter().map(|r| T::from(r)).collect())
     }
 
@@ -27,7 +31,7 @@ where
             .0
             .fetch_all(query(AssertSqlSafe(sql.to_owned())).bind(id))
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         Ok(rows.into_iter().map(|r| T::from(r)).collect())
     }
 
@@ -36,7 +40,7 @@ where
             .0
             .execute(query(AssertSqlSafe(sql.to_owned())))
             .await
-            .unwrap()
+            .map_err(to_ec)?
             .rows_affected())
     }
 
@@ -45,7 +49,7 @@ where
             .0
             .execute(query(AssertSqlSafe(sql.to_owned())).bind(id))
             .await
-            .unwrap()
+            .map_err(to_ec)?
             .rows_affected())
     }
 
@@ -54,7 +58,7 @@ where
             .0
             .fetch_one(query(AssertSqlSafe(sql.to_owned())))
             .await
-            .unwrap();
+            .map_err(to_ec)?;
         Ok(row.get::<i64, _>(0))
     }
 }

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "default_agent": "architect",
+  "instructions": ["AGENTS.md"],
+  "agent": {
+    "architect": {
+      "description": "项目架构师 — 架构设计、代码评审、技术决策 (主 agent)",
+      "mode": "primary"
+    },
+    "developer": {
+      "description": "项目研发 — 功能实现、测试编写、Bug 修复",
+      "mode": "subagent"
+    }
+  }
+}
