@@ -1,14 +1,45 @@
+use std::ops::{Deref, DerefMut};
 use async_trait::async_trait;
-use sqlx::{query, Executor, Row, Transaction};
+use sqlx::{query, Executor, Pool, Row, Transaction};
 use sqlx::AssertSqlSafe;
 use sqlx_oracle::Oracle;
-use crate::dao::r#async::{AsyncConnection, ToSqlAsync};
+use crate::dao::async_dao::{AsyncConnection, ToSqlAsync};
 use crate::model::result::{DbResult, ErrorCode};
 
 type OracleRow = <Oracle as sqlx::Database>::Row;
 
 /// Wrapper around sqlx Oracle Transaction.
-pub(crate) struct OracleAsyncTran<'a>(pub(crate) &'a mut Transaction<'a, Oracle>);
+pub struct OracleAsyncTran<'c>(pub Transaction<'c, Oracle>);
+
+impl<'c> Deref for OracleAsyncTran<'c> {
+    type Target = Transaction<'c, Oracle>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'c> DerefMut for OracleAsyncTran<'c> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'c> OracleAsyncTran<'c> {
+    /// Begin a new transaction from a connection pool.
+    pub async fn begin(pool: &Pool<Oracle>) -> Result<Self, ErrorCode> {
+        pool.begin().await.map(Self).map_err(|e| ErrorCode::new(1, &e.to_string()))
+    }
+
+    /// Commit the transaction.
+    pub async fn commit(self) -> Result<(), ErrorCode> {
+        self.0.commit().await.map_err(|e| ErrorCode::new(1, &e.to_string()))
+    }
+
+    /// Roll back the transaction.
+    pub async fn rollback(self) -> Result<(), ErrorCode> {
+        self.0.rollback().await.map_err(|e| ErrorCode::new(1, &e.to_string()))
+    }
+}
 
 fn to_ec(e: sqlx::Error) -> ErrorCode {
     ErrorCode::new(1, &e.to_string())

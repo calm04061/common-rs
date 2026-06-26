@@ -1,15 +1,14 @@
 use actix_web::web::Data;
-use sqlx::{Postgres, Transaction};
 use crate::dao::async_dao::AsyncTran;
-use crate::dao::async_dao::DbPool;
+use crate::dao::sqlx_oracle::DbPool;
 use crate::model::result::{DbResult, WebResult};
 
 pub async fn invoke<F, R>(pool: Data<DbPool>, f: F) -> WebResult<R>
     where
-        F: FnOnce(&mut Transaction<'_, Postgres>) -> DbResult<R> + Send + 'static,
+        F: FnOnce(&mut AsyncTran<'_>) -> DbResult<R> + Send + 'static,
         R: Send + 'static + Clone,
 {
-    let mut transaction = match pool.begin().await {
+    let mut transaction = match AsyncTran::begin(&pool).await {
         Ok(t) => t,
         Err(e) => return WebResult::fail(1, &e.to_string()),
     };

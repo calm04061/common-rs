@@ -1,19 +1,52 @@
+use std::ops::{Deref, DerefMut};
 use async_trait::async_trait;
 use sqlx::postgres::{PgRow, Postgres};
-use sqlx::{query, Executor, Row, Transaction};
+use sqlx::{query, Executor, Pool, Row, Transaction};
 use sqlx::AssertSqlSafe;
-use crate::dao::r#async::{AsyncConnection, ToSqlAsync};
+use crate::dao::async_dao::{AsyncConnection, ToSqlAsync};
 use crate::model::result::{DbResult, ErrorCode};
 
 /// Wrapper around sqlx Postgres Transaction.
-pub(crate) struct PgAsyncTran<'a>(pub(crate) &'a mut Transaction<'a, Postgres>);
+///
+/// Owns the Transaction so controllers never see `Postgres` or `Transaction` directly.
+pub struct PgAsyncTran<'c>(pub Transaction<'c, Postgres>);
+
+impl<'c> Deref for PgAsyncTran<'c> {
+    type Target = Transaction<'c, Postgres>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<'c> DerefMut for PgAsyncTran<'c> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<'c> PgAsyncTran<'c> {
+    /// Begin a new transaction from a connection pool.
+    pub async fn begin(pool: &Pool<Postgres>) -> Result<Self, ErrorCode> {
+        pool.begin().await.map(Self).map_err(|e| ErrorCode::new(1, &e.to_string()))
+    }
+
+    /// Commit the transaction.
+    pub async fn commit(self) -> Result<(), ErrorCode> {
+        self.0.commit().await.map_err(|e| ErrorCode::new(1, &e.to_string()))
+    }
+
+    /// Roll back the transaction.
+    pub async fn rollback(self) -> Result<(), ErrorCode> {
+        self.0.rollback().await.map_err(|e| ErrorCode::new(1, &e.to_string()))
+    }
+}
 
 fn to_ec(e: sqlx::Error) -> ErrorCode {
     ErrorCode::new(1, &e.to_string())
 }
 
 #[async_trait]
-impl<T> AsyncConnection<T> for PgAsyncTran<'_>
+impl<'c, T> AsyncConnection<T> for PgAsyncTran<'c>
 where
     T: From<PgRow> + Send + Sync,
 {
