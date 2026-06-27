@@ -1,7 +1,7 @@
 #![cfg(feature = "sqlx_pg")]
 
-use common::dao::async_dao::PgAsyncTran;
-use common::dao::sqlx_postgres::DbPool;
+use common::dao::async_dao::AsyncTran;
+use common::dao::async_dao::DbPool;
 use sqlx::{AssertSqlSafe, Executor, Row};
 
 fn load_env() {
@@ -21,7 +21,7 @@ async fn get_pool() -> DbPool {
 }
 
 /// Call `Executor::execute` on the inner `Transaction` (avoids `AsyncConnection` ambiguity).
-async fn exec_sql(tran: &mut PgAsyncTran<'_>, stmt: &str) {
+async fn exec_sql(tran: &mut AsyncTran<'_>, stmt: &str) {
     let sql = stmt.to_string();
     tran.0.execute(sqlx::query(AssertSqlSafe(sql))).await.unwrap();
 }
@@ -33,7 +33,7 @@ async fn exec_sql(tran: &mut PgAsyncTran<'_>, stmt: &str) {
 #[tokio::test]
 async fn begin_then_rollback() {
     let pool = get_pool().await;
-    let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+    let mut tran = AsyncTran::begin(&pool).await.unwrap();
     let row = tran.fetch_one(sqlx::query("SELECT 1 AS v")).await.unwrap();
     assert_eq!(row.get::<i32, _>("v"), 1);
     tran.rollback().await.unwrap();
@@ -43,12 +43,12 @@ async fn begin_then_rollback() {
 #[tokio::test]
 async fn commit_persists_data() {
     let pool = get_pool().await;
-    let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+    let mut tran = AsyncTran::begin(&pool).await.unwrap();
     exec_sql(&mut tran, "CREATE TEMP TABLE test_commit (id INT PRIMARY KEY, val TEXT)").await;
     exec_sql(&mut tran, "INSERT INTO test_commit VALUES (1, 'hello')").await;
     tran.commit().await.unwrap();
 
-    let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+    let mut tran = AsyncTran::begin(&pool).await.unwrap();
     let row = tran.fetch_one(sqlx::query("SELECT val FROM test_commit WHERE id = 1")).await.unwrap();
     assert_eq!(row.get::<String, _>("val"), "hello");
     exec_sql(&mut tran, "DROP TABLE test_commit").await;
@@ -59,12 +59,12 @@ async fn commit_persists_data() {
 #[tokio::test]
 async fn rollback_discards_data() {
     let pool = get_pool().await;
-    let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+    let mut tran = AsyncTran::begin(&pool).await.unwrap();
     exec_sql(&mut tran, "CREATE TEMP TABLE test_rollback (id INT)").await;
     exec_sql(&mut tran, "INSERT INTO test_rollback VALUES (99)").await;
     tran.rollback().await.unwrap();
 
-    let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+    let mut tran = AsyncTran::begin(&pool).await.unwrap();
     let row = tran.fetch_one(sqlx::query("SELECT COUNT(*) AS c FROM test_rollback")).await.unwrap();
     assert_eq!(row.get::<i64, _>("c"), 0);
     exec_sql(&mut tran, "DROP TABLE test_rollback").await;
@@ -81,7 +81,7 @@ mod after_transaction_tests {
     #[tokio::test]
     async fn commits_on_ok() {
         let pool = get_pool().await;
-        let tran = PgAsyncTran::begin(&pool).await.unwrap();
+        let tran = AsyncTran::begin(&pool).await.unwrap();
         let result: DbResult<i32> = Ok(42);
         let result = after_transaction(result, tran).await;
         assert_eq!(result.unwrap(), 42);
@@ -91,7 +91,7 @@ mod after_transaction_tests {
     #[tokio::test]
     async fn rolls_back_on_err() {
         let pool = get_pool().await;
-        let tran = PgAsyncTran::begin(&pool).await.unwrap();
+        let tran = AsyncTran::begin(&pool).await.unwrap();
         let result: DbResult<i32> = Err(ErrorCode::new(500, "test error"));
         let result = after_transaction(result, tran).await;
         assert!(result.is_err());
@@ -115,7 +115,7 @@ mod async_connection_tests {
     #[tokio::test]
     async fn query_all_returns_rows() {
         let pool = get_pool().await;
-        let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+        let mut tran = AsyncTran::begin(&pool).await.unwrap();
         exec_sql(&mut tran, "CREATE TEMP TABLE test_qa (id INT, val TEXT)").await;
         exec_sql(&mut tran, "INSERT INTO test_qa VALUES (1, 'a'), (2, 'b')").await;
 
@@ -131,7 +131,7 @@ mod async_connection_tests {
     #[tokio::test]
     async fn execute_returns_affected_rows() {
         let pool = get_pool().await;
-        let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+        let mut tran = AsyncTran::begin(&pool).await.unwrap();
         exec_sql(&mut tran, "CREATE TEMP TABLE test_exec (id INT)").await;
         exec_sql(&mut tran, "INSERT INTO test_exec VALUES (1), (2), (3)").await;
 
@@ -145,7 +145,7 @@ mod async_connection_tests {
     #[tokio::test]
     async fn count_returns_row_count() {
         let pool = get_pool().await;
-        let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+        let mut tran = AsyncTran::begin(&pool).await.unwrap();
         exec_sql(&mut tran, "CREATE TEMP TABLE test_cnt (id INT)").await;
         exec_sql(&mut tran, "INSERT INTO test_cnt VALUES (10), (20)").await;
 
@@ -159,7 +159,7 @@ mod async_connection_tests {
     #[tokio::test]
     async fn query_bind_filters_by_id() {
         let pool = get_pool().await;
-        let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+        let mut tran = AsyncTran::begin(&pool).await.unwrap();
         exec_sql(&mut tran, "CREATE TEMP TABLE test_qb (id INT, val TEXT)").await;
         exec_sql(&mut tran, "INSERT INTO test_qb VALUES (1, 'x'), (2, 'y')").await;
 
@@ -174,7 +174,7 @@ mod async_connection_tests {
     #[tokio::test]
     async fn execute_bind_deletes_by_id() {
         let pool = get_pool().await;
-        let mut tran = PgAsyncTran::begin(&pool).await.unwrap();
+        let mut tran = AsyncTran::begin(&pool).await.unwrap();
         exec_sql(&mut tran, "CREATE TEMP TABLE test_eb (id INT)").await;
         exec_sql(&mut tran, "INSERT INTO test_eb VALUES (1), (2)").await;
 

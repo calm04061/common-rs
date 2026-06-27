@@ -3,19 +3,47 @@ use sqlx::{Pool};
 /// sqlx backends.
 #[cfg(feature = "sqlx_pg")]
 pub mod sqlx_pg_backend;
-
+#[cfg(feature = "sqlx_mysql")]
+pub mod sqlx_mysql_backend;
+#[cfg(feature = "sqlx_oracle")]
+pub mod sqlx_oracle_backend;
 
 #[cfg(feature = "sqlx_pg")]
 pub type AsyncTran<'a> = sqlx_pg_backend::PgAsyncTran<'a>;
 #[cfg(feature = "sqlx_pg")]
 pub type DbPool = Pool<sqlx::Postgres>;
+#[cfg(feature = "sqlx_pg")]
+pub type DbRow = sqlx::postgres::PgRow;
+#[cfg(feature = "sqlx_pg")]
+pub type Db = sqlx::Postgres;
 
-#[cfg(feature = "sqlx_oracle")]
-pub mod sqlx_oracle_backend;
+#[cfg(feature = "sqlx_pg")]
+pub type DbPoolOptions = sqlx::postgres::PgPoolOptions;
+
+
+#[cfg(feature = "sqlx_mysql")]
+pub type AsyncTran<'a> = sqlx_mysql_backend::MySqlAsyncTran<'a>;
+#[cfg(feature = "sqlx_mysql")]
+pub type DbPool = Pool<sqlx::MySql>;
+#[cfg(feature = "sqlx_mysql")]
+pub type DbRow = sqlx::mysql::MySqlRow;
+#[cfg(feature = "sqlx_mysql")]
+pub type Db = sqlx::MySql;
+
+
+#[cfg(feature = "sqlx_mysql")]
+pub type DbPoolOptions = sqlx::mysql::MySqlPoolOptions;
+
+
 #[cfg(feature = "sqlx_oracle")]
 pub type AsyncTran<'a> = sqlx_oracle_backend::OracleAsyncTran<'a>;
 #[cfg(feature = "sqlx_oracle")]
 pub type DbPool = Pool<sqlx_oracle::Oracle>;
+#[cfg(feature = "sqlx_oracle")]
+pub type DbRow = sqlx_oracle::OracleRow;
+#[cfg(feature = "sqlx_oracle")]
+pub type Db = sqlx_oracle::Oracle;
+
 
 use crate::model::result::{DbResult, PageRequest, PageResult};
 use async_trait::async_trait;

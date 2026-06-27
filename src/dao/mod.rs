@@ -1,31 +1,25 @@
-// ---------------------------------------------------------------------------
-// Old per-backend modules — kept for backward compatibility.
-// ---------------------------------------------------------------------------
-#[cfg(feature = "r2d2_pg")]
-pub mod r2d2_postgres;
-// #[cfg(feature = "sqlx_pg")]
-// pub mod sqlx_postgres;
-#[cfg(feature = "sqlite")]
-pub mod sqlite;
-// #[cfg(feature = "sqlx_oracle")]
-// pub mod sqlx_oracle;
-
-// ---------------------------------------------------------------------------
-// New unified modules (方案三).
-//
-// `sync`  — shared by r2d2_pg + sqlite  (sync/blocking backends)
-// `async_dao` — shared by sqlx_pg + sqlx_oracle  (async backends)
-// ---------------------------------------------------------------------------
-
-/// Unified sync DAO — available when at least one sync backend is enabled.
-#[cfg(any(feature = "r2d2_pg", feature = "sqlite"))]
-pub mod sync;
-
 /// Unified async DAO — available when at least one sqlx backend is enabled.
-#[cfg(any(feature = "sqlx_pg", feature = "sqlx_oracle"))]
+#[cfg(any(feature = "sqlx_pg", feature = "sqlx_mysql", feature = "sqlx_oracle"))]
 pub mod async_dao;
-// Re-exports for ergonomic usage
-#[cfg(any(feature = "r2d2_pg", feature = "sqlite"))]
-pub use sync::SimpleDao;
-#[cfg(any(feature = "sqlx_pg", feature = "sqlx_oracle"))]
+
+#[cfg(any(feature = "sqlx_pg", feature = "sqlx_mysql", feature = "sqlx_oracle"))]
 pub use async_dao::AsyncSimpleDao;
+#[cfg(any(feature = "sqlx_pg", feature = "sqlx_mysql", feature = "sqlx_oracle"))]
+use crate::model::result::DbResult;
+
+#[cfg(any(feature = "sqlx_pg", feature = "sqlx_mysql", feature = "sqlx_oracle"))]
+pub fn get_first<T: for<'r> From<&'r async_dao::DbRow>>(result: DbResult<Vec<async_dao::DbRow>>) -> DbResult<Option<T>> {
+    if let Err(e) = result {
+        return Err(e);
+    }
+    let rows = result?;
+    Ok(rows.first().map(|r| T::from(r)))
+}
+
+#[cfg(any(feature = "sqlx_pg", feature = "sqlx_mysql", feature = "sqlx_oracle"))]
+pub fn convert<T: for<'r> From<&'r async_dao::DbRow>>(result: DbResult<Vec<async_dao::DbRow>>) -> DbResult<Vec<T>> {
+    if let Err(e) = result {
+        return Err(e);
+    }
+    Ok(result?.iter().map(|r| T::from(r)).collect())
+}
