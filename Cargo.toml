@@ -20,12 +20,13 @@ sqlx = { version = "0.9.0", features = ["runtime-tokio"], optional = true }
 async-trait = { version = "0.1.89", optional = true }
 lazy_static = "1.5.0"
 quartz_sched = { version = "0.1.11", optional = true }
-sqlx-oracle = { git = "https://github.com/calm04061/sqlx-oracle.git", branch = "feature/sqlx9", optional = true }
+sqlx-oracle = { git = "https://github.com/calm04061/sqlx-oracle.git", optional = true }
+sqlx-mysql = { version = "0.9.0",optional = true }
 
 [features]
 default = ["web"]
 sqlx_pg = ["sqlx", "sqlx/postgres", "async-trait"]
-sqlx_mysql = ["sqlx", "sqlx/mysql", "async-trait"]
+sqlx_mysql = ["sqlx", "sqlx/mysql", "async-trait", "sqlx-mysql"]
 sqlx_oracle = ["sqlx", "sqlx-oracle", "async-trait"]
 quartz = ["quartz_sched"]
 web = ["dep:actix-web"]

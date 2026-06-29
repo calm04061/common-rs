@@ -20,6 +20,8 @@ pub type Db = sqlx::Postgres;
 #[cfg(feature = "sqlx_pg")]
 pub type DbPoolOptions = sqlx::postgres::PgPoolOptions;
 
+#[cfg(feature = "sqlx_pg")]
+pub type DbQueryResult = sqlx::postgres::PgQueryResult;
 
 #[cfg(feature = "sqlx_mysql")]
 pub type AsyncTran<'a> = sqlx_mysql_backend::MySqlAsyncTran<'a>;
@@ -34,6 +36,9 @@ pub type Db = sqlx::MySql;
 #[cfg(feature = "sqlx_mysql")]
 pub type DbPoolOptions = sqlx::mysql::MySqlPoolOptions;
 
+#[cfg(feature = "sqlx_mysql")]
+pub type DbQueryResult = sqlx_mysql::MySqlQueryResult;
+
 
 #[cfg(feature = "sqlx_oracle")]
 pub type AsyncTran<'a> = sqlx_oracle_backend::OracleAsyncTran<'a>;
@@ -45,6 +50,10 @@ pub type DbRow = sqlx_oracle::OracleRow;
 pub type Db = sqlx_oracle::Oracle;
 #[cfg(feature = "sqlx_oracle")]
 pub type DbPoolOptions = sqlx_oracle::OraclePoolOptions;
+#[cfg(feature = "sqlx_oracle")]
+pub type DbQueryResult = sqlx_oracle::OracleQueryResult;
+
+
 
 use crate::model::result::{DbResult, PageRequest, PageResult};
 use async_trait::async_trait;
