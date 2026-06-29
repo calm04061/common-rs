@@ -43,7 +43,8 @@ pub type DbPool = Pool<sqlx_oracle::Oracle>;
 pub type DbRow = sqlx_oracle::OracleRow;
 #[cfg(feature = "sqlx_oracle")]
 pub type Db = sqlx_oracle::Oracle;
-
+#[cfg(feature = "sqlx_oracle")]
+pub type DbPoolOptions = sqlx_oracle::OraclePoolOptions;
 
 use crate::model::result::{DbResult, PageRequest, PageResult};
 use async_trait::async_trait;
