@@ -5,8 +5,8 @@ mod scheduler;
 #[cfg(feature = "quartz")]
 pub use scheduler::get_scheduler;
 
-mod database;
 pub mod dao;
+#[cfg(feature = "web")]
 pub mod web;
 
 #[cfg(test)]
